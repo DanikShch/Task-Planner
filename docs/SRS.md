@@ -41,6 +41,15 @@
 - Окно для выбора даты с использованием календаря.
 - Окно авторизации.
 
+<img src="mockups/main_screen.png" alt="main_screen" width="400" />
+
+<img src="mockups/new_task.png" alt="new_task" width="400" />
+
+<img src="mockups/select_date.png" alt="select_date" width="400" />
+
+<img src="mockups/authorization.png" alt="authorization" width="400"
+
+
 <a name="user_specifications"/>
 
 ## 2.3 Характеристики пользователей
@@ -65,10 +74,6 @@
 - Возможность редактирования описания задачи и установки уведомлений.
 - Возможность выбора даты с использованием календаря.
 - Адаптация интерфейса для мобильных устройств.
-![main_screen](mockups/main_screen.png)
-![new_task](mockups/new_task.png)
-![select_date](mockups/select_date.png)
-![authorization](mockups/authorization.png)
 
 <a name="non-functional_requirements"/>
 
