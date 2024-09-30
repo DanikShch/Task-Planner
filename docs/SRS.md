@@ -41,13 +41,13 @@
 - Окно для выбора даты с использованием календаря.
 - Окно авторизации.
 
-<img src="mockups/main_screen.png" alt="main_screen" width="400" />
+<img src="mockups/main_screen.png" alt="main_screen" width="400" /><br />
 
-<img src="mockups/new_task.png" alt="new_task" width="400" />
+<img src="mockups/new_task.png" alt="new_task" width="400" /><br />
 
-<img src="mockups/select_date.png" alt="select_date" width="400" />
+<img src="mockups/select_date.png" alt="select_date" width="400" /><br />
 
-<img src="mockups/authorization.png" alt="authorization" width="400"
+<img src="mockups/authorization.png" alt="authorization" width="400" /><br />
 
 
 <a name="user_specifications"/>
