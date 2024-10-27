@@ -5,6 +5,7 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
@@ -22,20 +23,46 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import android.view.ScaleGestureDetector
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
+import java.time.LocalDate
+import java.time.LocalTime
 
+@RequiresApi(Build.VERSION_CODES.O)
 class MainActivity : AppCompatActivity() {
     private lateinit var preferences: SharedPreferences
-    private val taskList = mutableListOf<Task>() // Список задач
-    private val categories = mutableListOf("Все", "Работа", "Учеба") // Список категорий
-    private var filteredTaskList = mutableListOf<Task>() // Список для отображения задач в зависимости от фильтра
+    private val taskList = mutableListOf<Task>()
+    private val categories = mutableListOf("Все", "Работа", "Учеба")
+    private var filteredTaskList = mutableListOf<Task>()
 
     private lateinit var taskAdapter: TaskAdapter
     private lateinit var categorySpinner: Spinner
-    private lateinit var scaleGestureDetector: ScaleGestureDetector // Для обработки Pinch жеста
+    private lateinit var scaleGestureDetector: ScaleGestureDetector
+
+    // Лаунчер для обновления задачи
+    private val updateTaskLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val updatedTask = result.data?.getSerializableExtra("task") as? Task
+            val taskPosition = result.data?.getIntExtra("task_position", -1) ?: -1
+
+            if (updatedTask != null && taskPosition in taskList.indices) {
+                Log.d("MainActivity", "Updating task at position $taskPosition: $updatedTask")
+                taskList[taskPosition] = updatedTask
+                if (!categories.contains(updatedTask.category)) {
+                    categories.add(updatedTask.category)
+                }
+                updateFilteredTasks() // Обновляем список отображаемых задач
+                saveData() // Сохраняем данные
+            } else {
+                Log.e("MainActivity", "Failed to update task. Updated task: $updatedTask, Position: $taskPosition")
+            }
+        }
+    }
+
 
     private val createTaskLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -43,11 +70,12 @@ class MainActivity : AppCompatActivity() {
                 val task = result.data?.getSerializableExtra("task") as? Task
                 task?.let {
                     taskList.add(it)
+                    Log.d("MainActivity", "Opening UpdateTaskActivity with Task: ${task.title}, Date: ${task.date}, Time: ${task.time}, Category: ${task.category}")
                     if (!categories.contains(it.category)) {
                         categories.add(it.category)
                     }
-                    updateFilteredTasks() // Обновляем список отображаемых задач
-                    saveData() // Сохраняем данные
+                    updateFilteredTasks()
+                    saveData()
                 }
             }
         }
@@ -55,7 +83,7 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge() // Включаем режим Edge-to-Edge
+        enableEdgeToEdge()
         val isTablet = resources.getBoolean(R.bool.isTablet)
         if (isTablet) {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -64,58 +92,59 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(R.layout.activity_main)
 
-
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main)) { v, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom) // Устанавливаем отступы
-            insets // Возвращаем insets
+            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
+            insets
         }
 
-        // Инициализация SharedPreferences
         preferences = getSharedPreferences("task_preferences", MODE_PRIVATE)
 
-        // Инициализация RecyclerView
         val recyclerView: RecyclerView = findViewById(R.id.task_recycler_view)
-        taskAdapter = TaskAdapter(filteredTaskList) { position ->
-            removeTask(position) // Удаляем задачу по позиции
-        }
+        taskAdapter = TaskAdapter(filteredTaskList, { position ->
+            // Открытие UpdateTaskActivity при клике на задачу
+            val task = filteredTaskList[position]
+            Log.d("MainActivity", "Opening UpdateTaskActivity with Task: ${task.title}, Date: ${task.date}, Time: ${task.time}, Category: ${task.category}")
+            val intent = Intent(this, UpdateTaskActivity::class.java)
+            intent.putExtra("task", task)
+            intent.putExtra("task_position", position)
+            intent.putStringArrayListExtra("categories", ArrayList(categories)) // Передаем категории
+            updateTaskLauncher.launch(intent)
+        }, { position ->
+            removeTask(position) // Удаление задачи по позиции
+        })
+
         recyclerView.layoutManager = LinearLayoutManager(this)
         recyclerView.adapter = taskAdapter
 
-        // Устанавливаем слушатель касаний на RecyclerView
-        recyclerView.setOnTouchListener { v, event ->
-            scaleGestureDetector.onTouchEvent(event) // Передаем событие в ScaleGestureDetector
-            false // Возвращаем false, чтобы RecyclerView продолжал обрабатывать остальные события
+        recyclerView.setOnTouchListener { _, event ->
+            scaleGestureDetector.onTouchEvent(event)
+            false
         }
 
-        // Добавляем ItemTouchHelper для обработки свайпов
         val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT) {
             override fun onMove(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder, target: RecyclerView.ViewHolder): Boolean {
-                return false // Не обрабатываем движение
+                return false
             }
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
                 val position = viewHolder.adapterPosition
-                removeTask(position) // Удаляем задачу по свайпу
+                removeTask(position)
             }
         })
         itemTouchHelper.attachToRecyclerView(recyclerView)
 
-        // Инициализация Spinner с категориями
         categorySpinner = findViewById(R.id.category_spinner)
         val categoryAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, categories)
         categoryAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         categorySpinner.adapter = categoryAdapter
 
-        // Устанавливаем слушатель для выбора категории
         categorySpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
                 updateFilteredTasks()
             }
 
-            override fun onNothingSelected(parent: AdapterView<*>) {
-                // Ничего не делаем
-            }
+            override fun onNothingSelected(parent: AdapterView<*>) {}
         }
 
         val deleteCategoryButton: Button = findViewById(R.id.delete_category_button)
@@ -128,24 +157,18 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Кнопка для создания новой задачи
         val addTaskButton: Button = findViewById(R.id.add_task_button)
         addTaskButton.setOnClickListener {
             val intent = Intent(this, CreateTaskActivity::class.java)
-            // Передаём лист данных
             intent.putStringArrayListExtra("categories", ArrayList(categories))
-            // Запускаем вторую активность с ожиданием результата
             createTaskLauncher.launch(intent)
         }
 
-        // Загрузка данных после инициализации всех представлений
         loadData()
 
-        // Инициализация ScaleGestureDetector для обработки Pinch
         scaleGestureDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
                 if (detector.scaleFactor < 0.9f) {
-                    // Если жест "сжатие" (pinch), то открываем LoginActivity
                     val intent = Intent(this@MainActivity, LoginActivity::class.java)
                     startActivity(intent)
                     return true
@@ -159,41 +182,30 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("Подтверждение удаления")
             .setMessage("Вы хотите удалить все задачи категории \"$category\"?")
-            .setPositiveButton("Да") { dialog: DialogInterface, _: Int ->
-                deleteTasksByCategory(category)
-            }
-            .setNegativeButton("Нет") { dialog: DialogInterface, _: Int ->
-                changeTasksCategoryToDefault(category)
-            }
+            .setPositiveButton("Да") { _, _ -> deleteTasksByCategory(category) }
+            .setNegativeButton("Нет") { _, _ -> changeTasksCategoryToDefault(category) }
             .create()
             .show()
     }
 
     private fun deleteTasksByCategory(category: String) {
-        taskList.removeAll { it.category == category } // Удаляем все задачи данной категории
-        categories.remove(category) // Удаляем категорию
-        saveData() // Сохраняем данные
-        updateCategorySpinner() // Обновляем Spinner
-        updateFilteredTasks() // Обновляем список задач
-
+        taskList.removeAll { it.category == category }
+        categories.remove(category)
+        saveData()
+        updateCategorySpinner()
+        updateFilteredTasks()
     }
 
     private fun changeTasksCategoryToDefault(category: String) {
-        // Меняем категорию всех задач данной категории на "Все"
         taskList.forEach { task ->
             if (task.category == category) {
                 task.category = "Все"
             }
         }
-
-        // Удаляем категорию из списка категорий
         categories.remove(category)
-
-        // Сохраняем изменения
-        saveData() // Сохраняем данные
-        updateCategorySpinner() // Обновляем Spinner, чтобы отобразить изменения
-        updateFilteredTasks() // Обновляем список задач
-
+        saveData()
+        updateCategorySpinner()
+        updateFilteredTasks()
     }
 
     private fun updateCategorySpinner() {
@@ -205,57 +217,54 @@ class MainActivity : AppCompatActivity() {
     private fun updateFilteredTasks() {
         val selectedCategory = categorySpinner.selectedItem.toString()
         filteredTaskList.clear()
-
         if (selectedCategory == "Все") {
-            filteredTaskList.addAll(taskList) // Добавляем все задачи
+            filteredTaskList.addAll(taskList)
         } else {
-            filteredTaskList.addAll(taskList.filter { it.category == selectedCategory }) // Фильтруем по категории
+            filteredTaskList.addAll(taskList.filter { it.category == selectedCategory })
         }
-
-        taskAdapter.notifyDataSetChanged() // Уведомляем адаптер об изменениях
+        taskAdapter.notifyDataSetChanged()
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun removeTask(position: Int) {
         val taskToRemove = filteredTaskList[position]
-        taskList.remove(taskToRemove) // Удаляем задачу из оригинального списка
-        filteredTaskList.removeAt(position) // Удаляем задачу из фильтрованного списка
-        taskAdapter.notifyItemRemoved(position) // Уведомляем адаптер об удалении
-        saveData() // Сохраняем данные после удаления
+        taskList.remove(taskToRemove)
+        filteredTaskList.removeAt(position)
+        taskAdapter.notifyItemRemoved(position)
+        saveData()
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun saveData() {
         val editor = preferences.edit()
-        val gson = Gson()
-        val taskListJson = gson.toJson(taskList)
-        editor.putString("task_list", taskListJson)
+        val gson = GsonBuilder()
+            .registerTypeAdapter(LocalDate::class.java, LocalDateAdapter())
+            .registerTypeAdapter(LocalTime::class.java, LocalTimeAdapter())
+            .create()
+        editor.putString("task_list", gson.toJson(taskList))
         editor.putStringSet("categories", categories.toSet())
         editor.apply()
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun loadData() {
-        val gson = Gson()
+        val gson = GsonBuilder()
+            .registerTypeAdapter(LocalDate::class.java, LocalDateAdapter())
+            .registerTypeAdapter(LocalTime::class.java, LocalTimeAdapter())
+            .create()
         val taskListJson = preferences.getString("task_list", null)
-
-        // Проверяем, есть ли данные для загрузки
         if (taskListJson != null) {
-            Log.d("MainActivity", "Загрузка задач из SharedPreferences")
             val type = object : TypeToken<MutableList<Task>>() {}.type
             taskList.clear()
             taskList.addAll(gson.fromJson(taskListJson, type) ?: emptyList())
-        } else {
-            Log.d("MainActivity", "Нет сохраненных задач")
         }
-
-        // Загружаем категории
         val categorySet = preferences.getStringSet("categories", null)
         if (categorySet != null) {
             categories.clear()
-            categories.add("Все") // Убедитесь, что "Все" всегда на первом месте
-            categories.addAll(categorySet.filter { it != "Все" }) // Добавляем остальные категории, исключая "Все"
-        } else {
-            Log.d("MainActivity", "Нет сохраненных категорий")
+            categories.add("Все")
+            categories.addAll(categorySet.filter { it != "Все" })
         }
-
-        updateFilteredTasks() // Обновляем отображаемые задачи после загрузки
+        updateFilteredTasks()
     }
+
 }

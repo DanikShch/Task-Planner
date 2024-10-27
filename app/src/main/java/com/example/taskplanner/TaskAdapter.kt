@@ -8,8 +8,9 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
 class TaskAdapter(
-    private val tasks: MutableList<Task>, // Сделаем список изменяемым
-    private val onTaskMarked: (Int) -> Unit // Добавляем callback для удаления задачи
+    private val tasks: MutableList<Task>,
+    private val onTaskClick: (Int) -> Unit,  // Callback для открытия UpdateTaskActivity
+    private val onTaskMarked: (Int) -> Unit  // Callback для отметки задачи
 ) : RecyclerView.Adapter<TaskAdapter.TaskViewHolder>() {
 
     class TaskViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -27,9 +28,14 @@ class TaskAdapter(
         val task = tasks[position]
         holder.taskTextView.text = task.title
 
-        // Устанавливаем слушатель для кнопки отметки
+        // Обработка клика по элементу задачи для открытия UpdateTaskActivity
+        holder.itemView.setOnClickListener {
+            onTaskClick(position) // Вызываем callback с позицией задачи
+        }
+
+        // Обработка клика по кнопке отметки
         holder.markButton.setOnClickListener {
-            onTaskMarked(position) // Вызываем callback с позицией задачи
+            onTaskMarked(position) // Вызываем callback для удаления задачи
         }
     }
 
