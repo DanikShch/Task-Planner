@@ -1,12 +1,17 @@
 package com.example.taskplanner
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlarmManager
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -24,6 +29,8 @@ import androidx.recyclerview.widget.RecyclerView
 import android.view.ScaleGestureDetector
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.RequiresApi
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.google.gson.Gson
@@ -32,7 +39,6 @@ import com.google.gson.reflect.TypeToken
 import java.time.LocalDate
 import java.time.LocalTime
 
-@RequiresApi(Build.VERSION_CODES.O)
 class MainActivity : AppCompatActivity() {
     private lateinit var preferences: SharedPreferences
     private val taskList = mutableListOf<Task>()
@@ -42,8 +48,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var taskAdapter: TaskAdapter
     private lateinit var categorySpinner: Spinner
     private lateinit var scaleGestureDetector: ScaleGestureDetector
+    private lateinit var notificationHelper: NotificationHelper
 
-    // Лаунчер для обновления задачи
     private val updateTaskLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
             val updatedTask = result.data?.getSerializableExtra("task") as? Task
@@ -52,17 +58,21 @@ class MainActivity : AppCompatActivity() {
             if (updatedTask != null && taskPosition in taskList.indices) {
                 Log.d("MainActivity", "Updating task at position $taskPosition: $updatedTask")
                 taskList[taskPosition] = updatedTask
+
+                // Проверка разрешения на установку уведомлений
+                checkAndScheduleNotification(updatedTask)
+
                 if (!categories.contains(updatedTask.category)) {
                     categories.add(updatedTask.category)
                 }
-                updateFilteredTasks() // Обновляем список отображаемых задач
                 saveData() // Сохраняем данные
+                updateFilteredTasks() // Обновляем список отображаемых задач
+
             } else {
                 Log.e("MainActivity", "Failed to update task. Updated task: $updatedTask, Position: $taskPosition")
             }
         }
     }
-
 
     private val createTaskLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -71,6 +81,10 @@ class MainActivity : AppCompatActivity() {
                 task?.let {
                     taskList.add(it)
                     Log.d("MainActivity", "Opening UpdateTaskActivity with Task: ${task.title}, Date: ${task.date}, Time: ${task.time}, Category: ${task.category}")
+
+                    // Проверка разрешения на установку уведомлений
+                    checkAndScheduleNotification(it)
+
                     if (!categories.contains(it.category)) {
                         categories.add(it.category)
                     }
@@ -97,6 +111,10 @@ class MainActivity : AppCompatActivity() {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
+
+
+        notificationHelper = NotificationHelper(this)
+        notificationHelper.createNotificationChannel() // Создаем канал уведомлений
 
         preferences = getSharedPreferences("task_preferences", MODE_PRIVATE)
 
@@ -214,6 +232,7 @@ class MainActivity : AppCompatActivity() {
         categorySpinner.adapter = categoryAdapter
     }
 
+    @SuppressLint("NotifyDataSetChanged")
     private fun updateFilteredTasks() {
         val selectedCategory = categorySpinner.selectedItem.toString()
         filteredTaskList.clear()
@@ -227,7 +246,6 @@ class MainActivity : AppCompatActivity() {
         taskAdapter.notifyDataSetChanged()
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     private fun removeTask(position: Int) {
         val taskToRemove = filteredTaskList[position]
         taskList.remove(taskToRemove)
@@ -236,7 +254,6 @@ class MainActivity : AppCompatActivity() {
         saveData()
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     private fun saveData() {
         val editor = preferences.edit()
         val gson = GsonBuilder()
@@ -246,9 +263,9 @@ class MainActivity : AppCompatActivity() {
         editor.putString("task_list", gson.toJson(taskList))
         editor.putStringSet("categories", categories.toSet())
         editor.apply()
+
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
     private fun loadData() {
         val gson = GsonBuilder()
             .registerTypeAdapter(LocalDate::class.java, LocalDateAdapter())
@@ -267,6 +284,54 @@ class MainActivity : AppCompatActivity() {
             categories.addAll(categorySet.filter { it != "Все" })
         }
         updateFilteredTasks()
+    }
+
+
+
+
+    // Метод для проверки разрешения и установки уведомления
+    private fun checkAndScheduleNotification(task: Task) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+            if (alarmManager.canScheduleExactAlarms()) {
+                // Разрешение предоставлено, устанавливаем уведомление
+                notificationHelper.scheduleNotification(task)
+            } else {
+                // Разрешение не предоставлено, направляем пользователя в настройки
+                Toast.makeText(this, "Please enable exact alarm permission in settings.", Toast.LENGTH_LONG).show()
+                val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                startActivity(intent)
+            }
+        } else {
+            // Устанавливаем уведомление без проверки разрешения для Android < 5
+            notificationHelper.scheduleNotification(task)
+        }
+    }
+
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Разрешение предоставлено, устанавливаем уведомление
+                    // Вы можете вызвать метод, чтобы запланировать уведомление
+                   // checkAndScheduleNotification(/* передайте вашу задачу */)
+                } else {
+                    // Разрешение отклонено
+                    Log.e("MainActivity", "Permission denied to schedule exact alarms")
+                    Toast.makeText(this, "Permission denied to schedule notifications", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val REQUEST_CODE = 1001 // Код запроса для разрешения
     }
 
 }

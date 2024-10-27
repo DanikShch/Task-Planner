@@ -1,6 +1,6 @@
 package com.example.taskplanner
 
-
+import java.time.LocalDateTime
 import android.app.Activity
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
@@ -26,7 +26,6 @@ import java.util.Calendar
 class CreateTaskActivity : AppCompatActivity() {
     private lateinit var categories: MutableList<String> // Список категорий
 
-    @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge() // Включаем режим Edge-to-Edge
@@ -79,23 +78,20 @@ class CreateTaskActivity : AppCompatActivity() {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
+    // Финальная проверка в методе saveTask
     private fun saveTask() {
         val title = findViewById<EditText>(R.id.task_edit_text).text.toString().trim()
         val dateString = findViewById<EditText>(R.id.date_edit_text).text.toString().trim()
         val timeString = findViewById<EditText>(R.id.time_edit_text).text.toString().trim()
         val categorySpinner = findViewById<Spinner>(R.id.task_category_spinner)
 
-        val selectedCategory = categorySpinner.selectedItem.toString()
-        val newCategoryEditText = findViewById<EditText>(R.id.new_category_edit_text).text.toString().trim()
-
-        // Валидация
         if (title.isEmpty() || dateString.isEmpty() || timeString.isEmpty()) {
             showToast("Пожалуйста, заполните все поля")
             return
         }
 
-        // Если введена новая категория, используем ее
+        val selectedCategory = categorySpinner.selectedItem.toString()
+        val newCategoryEditText = findViewById<EditText>(R.id.new_category_edit_text).text.toString().trim()
         val category = if (newCategoryEditText.isNotEmpty()) newCategoryEditText else selectedCategory
 
         try {
@@ -104,13 +100,18 @@ class CreateTaskActivity : AppCompatActivity() {
             val date = LocalDate.parse(dateString, dateFormatter)
             val time = LocalTime.parse(timeString, timeFormatter)
 
-            val newTask = Task(title, date, time, category)
+            // Проверка: дата и время должны быть в будущем
+            val selectedDateTime = LocalDateTime.of(date, time)
+            if (selectedDateTime.isBefore(LocalDateTime.now())) {
+                showToast("Дата и время задачи должны быть в будущем")
+                return
+            }
 
-            // Возвращаем новый task в первую Activity
+            val newTask = Task(title, date, time, category)
             val resultIntent = Intent()
             resultIntent.putExtra("task", newTask)
             setResult(Activity.RESULT_OK, resultIntent)
-            finish() // Закрываем Activity2 и возвращаемся на Activity1
+            finish()
         } catch (e: Exception) {
             showToast("Некорректный формат даты или времени: ${e.message}")
         }
@@ -120,6 +121,7 @@ class CreateTaskActivity : AppCompatActivity() {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 
+    // Метод для выбора даты
     private fun showDatePicker() {
         val dateEditText = findViewById<EditText>(R.id.date_edit_text)
         val calendar = Calendar.getInstance()
@@ -127,11 +129,16 @@ class CreateTaskActivity : AppCompatActivity() {
         val month = calendar.get(Calendar.MONTH)
         val day = calendar.get(Calendar.DAY_OF_MONTH)
 
-        DatePickerDialog(this, { _, selectedYear, selectedMonth, selectedDay ->
-            dateEditText.setText("$selectedDay/${selectedMonth + 1}/$selectedYear")
-        }, year, month, day).show()
+        val datePickerDialog = DatePickerDialog(this, { _, selectedYear, selectedMonth, selectedDay ->
+            dateEditText.setText(String.format("%02d/%02d/%04d", selectedDay, selectedMonth + 1, selectedYear))
+        }, year, month, day)
+
+        // Устанавливаем минимальную дату на сегодняшний день
+        datePickerDialog.datePicker.minDate = calendar.timeInMillis
+        datePickerDialog.show()
     }
 
+    // Метод для выбора времени
     private fun showTimePicker() {
         val timeEditText = findViewById<EditText>(R.id.time_edit_text)
         val calendar = Calendar.getInstance()
@@ -139,7 +146,15 @@ class CreateTaskActivity : AppCompatActivity() {
         val minute = calendar.get(Calendar.MINUTE)
 
         TimePickerDialog(this, { _, selectedHour, selectedMinute ->
-            timeEditText.setText(String.format("%02d:%02d", selectedHour, selectedMinute))
+            val selectedDateText = findViewById<EditText>(R.id.date_edit_text).text.toString()
+
+            // Проверка: если выбрана текущая дата, то время не может быть раньше текущего
+            if (selectedDateText == LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")) &&
+                (selectedHour < hour || (selectedHour == hour && selectedMinute < minute))) {
+                showToast("Выберите время в будущем")
+            } else {
+                timeEditText.setText(String.format("%02d:%02d", selectedHour, selectedMinute))
+            }
         }, hour, minute, true).show()
     }
 }
