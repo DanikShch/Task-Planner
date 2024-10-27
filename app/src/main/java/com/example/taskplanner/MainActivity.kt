@@ -222,6 +222,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             filteredTaskList.addAll(taskList.filter { it.category == selectedCategory })
         }
+        // Сортировка задач по дате и времени
+        filteredTaskList.sortWith(compareBy<Task> { it.date }.thenBy { it.time })
         taskAdapter.notifyDataSetChanged()
     }
 
