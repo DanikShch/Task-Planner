@@ -60,7 +60,7 @@ class MainActivity : AppCompatActivity() {
                 taskList[taskPosition] = updatedTask
 
                 // Проверка разрешения на установку уведомлений
-                checkAndScheduleNotification(updatedTask)
+                checkNotificationPermission(updatedTask)
 
                 if (!categories.contains(updatedTask.category)) {
                     categories.add(updatedTask.category)
@@ -83,7 +83,7 @@ class MainActivity : AppCompatActivity() {
                     Log.d("MainActivity", "Opening UpdateTaskActivity with Task: ${task.title}, Date: ${task.date}, Time: ${task.time}, Category: ${task.category}")
 
                     // Проверка разрешения на установку уведомлений
-                    checkAndScheduleNotification(it)
+                    checkNotificationPermission(it)
 
                     if (!categories.contains(it.category)) {
                         categories.add(it.category)
@@ -125,7 +125,8 @@ class MainActivity : AppCompatActivity() {
             Log.d("MainActivity", "Opening UpdateTaskActivity with Task: ${task.title}, Date: ${task.date}, Time: ${task.time}, Category: ${task.category}")
             val intent = Intent(this, UpdateTaskActivity::class.java)
             intent.putExtra("task", task)
-            intent.putExtra("task_position", position)
+            val index = taskList.indexOf(task)
+            intent.putExtra("task_position", index)
             intent.putStringArrayListExtra("categories", ArrayList(categories)) // Передаем категории
             updateTaskLauncher.launch(intent)
         }, { position ->
@@ -286,6 +287,31 @@ class MainActivity : AppCompatActivity() {
         updateFilteredTasks()
     }
 
+    // Константа кода запроса разрешения для уведомлений
+    private val NOTIFICATION_PERMISSION_CODE = 1001
+
+    private fun checkNotificationPermission(task: Task) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // Запросить разрешение на отправку уведомлений
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    NOTIFICATION_PERMISSION_CODE
+                )
+                checkAndScheduleNotification(task)
+            } else {
+                // Разрешение предоставлено, проверяем и устанавливаем будильник
+                checkAndScheduleNotification(task)
+            }
+        } else {
+            checkAndScheduleNotification(task)
+        }
+    }
 
 
 
@@ -301,6 +327,7 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Please enable exact alarm permission in settings.", Toast.LENGTH_LONG).show()
                 val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
                 startActivity(intent)
+                notificationHelper.scheduleNotification(task)
             }
         } else {
             // Устанавливаем уведомление без проверки разрешения для Android < 5
@@ -316,19 +343,25 @@ class MainActivity : AppCompatActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
+            NOTIFICATION_PERMISSION_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Разрешение на уведомления предоставлено
+                    //checkAndScheduleNotification(/* передайте вашу задачу */)
+                } else {
+                    Toast.makeText(this, "Permission denied to post notifications", Toast.LENGTH_SHORT).show()
+                }
+            }
             REQUEST_CODE -> {
                 if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Разрешение предоставлено, устанавливаем уведомление
-                    // Вы можете вызвать метод, чтобы запланировать уведомление
-                   // checkAndScheduleNotification(/* передайте вашу задачу */)
+                    // Разрешение на точные будильники предоставлено
+                    //checkAndScheduleNotification(/* передайте вашу задачу */)
                 } else {
-                    // Разрешение отклонено
-                    Log.e("MainActivity", "Permission denied to schedule exact alarms")
-                    Toast.makeText(this, "Permission denied to schedule notifications", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Permission denied to schedule exact alarms", Toast.LENGTH_SHORT).show()
                 }
             }
         }
     }
+
 
     companion object {
         private const val REQUEST_CODE = 1001 // Код запроса для разрешения
