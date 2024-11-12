@@ -100,11 +100,25 @@ class LoginActivity : AppCompatActivity() {
         }
     }
 
+    companion object {
+      init {
+         System.loadLibrary("taskplanner")
+      }
+    }
+    external fun findUserInNative(username: String, hashedPassword: String, users: Array<User>): Boolean
+
+    // Функция для преобразования списка пользователей в массив для JNI
+    private fun convertUsersToArray(users: List<User>): Array<User> {
+        return users.toTypedArray()
+    }
+
     private fun validateUser(username: String, password: String): Boolean {
         val users = loadUsers()
+        val array = convertUsersToArray(users);
         val hashedPassword = hashPassword(password)
-        return users.any { it.username == username && it.password == hashedPassword }
+        return findUserInNative(username, hashedPassword, array);
     }
+
 
     private fun loadUsers(): List<User> {
         return try {
