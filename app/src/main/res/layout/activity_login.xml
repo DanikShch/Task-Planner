@@ -7,6 +7,16 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:padding="16dp">
 
+    <ImageView
+        android:id="@+id/logo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:src="@drawable/logo"
+        app:layout_constraintBottom_toTopOf="@+id/login_title"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <TextView
         android:id="@+id/login_title"
         android:layout_width="wrap_content"

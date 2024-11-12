@@ -200,9 +200,19 @@ class MainActivity : AppCompatActivity() {
     private fun showDeleteConfirmationDialog(category: String) {
         AlertDialog.Builder(this)
             .setTitle("Подтверждение удаления")
+            .setMessage("Вы действительно хотите удалить категорию \"$category\"?")
+            .setPositiveButton("Да") { _, _ -> showDeleteTasksConfirmationDialog(category) }
+            .setNegativeButton("Нет") { _, _ -> return@setNegativeButton }
+            .create()
+            .show()
+    }
+
+    private fun showDeleteTasksConfirmationDialog(category: String) {
+        AlertDialog.Builder(this)
+            .setTitle("Подтверждение удаления")
             .setMessage("Вы хотите удалить все задачи категории \"$category\"?")
-            .setPositiveButton("Да") { _, _ -> deleteTasksByCategory(category) }
-            .setNegativeButton("Нет") { _, _ -> changeTasksCategoryToDefault(category) }
+            .setPositiveButton("Удалить все задачи") { _, _ -> deleteTasksByCategory(category) }
+            .setNegativeButton("Оставить задачи") { _, _ -> changeTasksCategoryToDefault(category) }
             .create()
             .show()
     }
@@ -248,6 +258,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun removeTask(position: Int) {
+        if (position < 0 || position >= filteredTaskList.size) {
+                return
+        }
         val taskToRemove = filteredTaskList[position]
         taskList.remove(taskToRemove)
         filteredTaskList.removeAt(position)
